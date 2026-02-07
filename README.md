@@ -56,18 +56,18 @@ FlatDrop uses a **Hub & Spoke** architecture:
 ```text
 .
 ├── native/
-│   └── hub/          # 🦀 The Brain (Rust Core)
+│   └── hub/          # The Brain (Rust Core)
 │       ├── src/
 │       │   ├── crypto.rs       # X25519/XChaCha20 implementation
 │       │   ├── iroh_engine.rs  # P2P Transfer Engine
 │       │   ├── discovery.rs    # mDNS Service Discovery
 │       │   └── ...
 │       └── Cargo.toml
-├── android/          # 🤖 Android App (Kotlin + Compose)
-├── apple/            # 🍎 iOS & macOS App (Swift + SwiftUI)
-├── desktop/          # 🖥️ Windows/Linux App (Tauri)
-├── harmonyos/        #  HarmonyOS App (ArkTS + NAPI)
-├── proto/            # 📨 Protobuf Definitions for internal messaging
+├── android/          # Android App (Kotlin + Compose)
+├── apple/            # iOS & macOS App (Swift + SwiftUI)
+├── desktop/          # Windows/Linux App (Tauri)
+├── harmonyos/        # HarmonyOS App (ArkTS + NAPI)
+├── proto/            # Protobuf Definitions for internal messaging
 └── ...
 ```
 
