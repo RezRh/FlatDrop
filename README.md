@@ -48,6 +48,7 @@ FlatDrop uses a **Hub & Spoke** architecture:
 2.  **The Native Shells**:
     - **Android**: Calls Rust via JNA/UniFFI. Renders UI.
     - **Apple**: Calls Rust via C-FFI/UniFFI. Renders UI.
+    - **HarmonyOS**: Calls Rust via NAPI (Node-API). Renders UI in ArkTS.
     - **Desktop**: Embeds the Rust core directly.
 
 ### Directory Structure
@@ -65,6 +66,7 @@ FlatDrop uses a **Hub & Spoke** architecture:
 ├── android/          # 🤖 Android App (Kotlin + Compose)
 ├── apple/            # 🍎 iOS & macOS App (Swift + SwiftUI)
 ├── desktop/          # 🖥️ Windows/Linux App (Tauri)
+├── harmonyos/        #  HarmonyOS App (ArkTS + NAPI)
 ├── proto/            # 📨 Protobuf Definitions for internal messaging
 └── ...
 ```
@@ -112,6 +114,20 @@ cargo check
     ```
 3.  Open `apple/FlatDrop.xcodeproj` in Xcode.
 4.  Build & Run.
+
+### 4. HarmonyOS Setup (ArkTS + NAPI)
+
+1.  Add HarmonyOS targets:
+    ```bash
+    rustup target add aarch64-unknown-linux-ohos armv7-unknown-linux-ohos
+    ```
+2.  Build the Rust core static library:
+    ```bash
+    chmod +x build_harmony.sh
+    ./build_harmony.sh
+    ```
+3.  Open `harmonyos/` in **DevEco Studio**.
+4.  Sync and build. The NAPI bridge (`libentry.so`) will automatically link with the Rust static library.
 
 ---
 
