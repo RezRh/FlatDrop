@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- REQUIRED: For foreground service background transfers -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    
+    <!-- REQUIRED: Specific to data transfer (Android 14+) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    
+    <!-- REQUIRED: For showing transfer progress notification -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    
+    <!-- REQUIRED: To keep Wi-Fi active during transfer -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    
+    <!-- Optional: For automatic transfer retry on network change -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    
+    <!-- Optional: For cellular transfers (respect user data settings) -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:name=".FlatDropApplication"
+        android:label="FlatDrop"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:theme="@style/Theme.FlatDrop">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 
+            REQUIRED: Foreground Service for background transfers
+            - Android 14+ uses: foregroundServiceType="dataSync"
+            - This allows transfers to continue when app is backgrounded
+            - System will NOT kill the service while transfer is in progress
+        -->
+        <service
+            android:name=".background.TransferForegroundService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            android:description="@string/transfer_service_description" />
+
+        <!-- 
+            Optional: For handling large transfers that might exceed single session
+            - Restart service if system kills it
+            - Preserves transfer state across service restarts
+        -->
+        <service
+            android:name=".background.TransferRestartService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+    </application>
+
+</manifest>

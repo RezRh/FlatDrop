@@ -1,0 +1,235 @@
+syntax = "proto3";
+
+package flatdrop;
+
+// Device Discovery
+message DeviceInfo {
+  string name = 1;
+  string id = 2;
+  string ip = 3;
+  uint32 port = 4;
+  map<string, string> properties = 5;
+}
+
+enum DiscoveryAction {
+  UNSPECIFIED = 0;
+  START = 1;
+  STOP = 2;
+}
+
+message DiscoveryRequest {
+  DiscoveryAction action = 1;
+}
+
+enum DiscoveryEventType {
+  EVENT_UNSPECIFIED = 0;
+  DEVICE_FOUND = 1;
+  DEVICE_LOST = 2;
+  ERROR = 3;
+}
+
+message DiscoveryEvent {
+  DiscoveryEventType event_type = 1;
+  DeviceInfo device = 2;
+  string device_id = 3;
+  string error_message = 4;
+}
+
+// Transfer Status
+enum TransferStatus {
+  STATUS_UNSPECIFIED = 0;
+  PENDING = 1;
+  IN_PROGRESS = 2;
+  COMPLETED = 3;
+  FAILED = 4;
+  CANCELLED = 5;
+}
+
+enum TransferDirection {
+  DIRECTION_UNSPECIFIED = 0;
+  OUTGOING = 1;
+  INCOMING = 2;
+}
+
+message TransferProgress {
+  string transfer_id = 1;
+  string file_name = 2;
+  double progress = 3;
+  double speed_mbps = 4;
+  uint64 bytes_transferred = 5;
+  uint64 total_bytes = 6;
+  TransferStatus status = 7;
+  TransferDirection direction = 8;
+  string error_message = 9;
+}
+
+// File Transfer Requests
+message SendFileRequest {
+  string file_path = 1;
+  string target_device_id = 2;
+}
+
+message SendFileResponse {
+  string transfer_id = 1;
+  string ticket = 2;
+  bool success = 3;
+  string error_message = 4;
+}
+
+message IncomingFileRequest {
+  string transfer_id = 1;
+  string sender_name = 2;
+  string sender_id = 3;
+  string file_name = 4;
+  uint64 file_size = 5;
+  string ticket = 6;
+  string mime_type = 7;
+}
+
+message AcceptFileRequest {
+  string transfer_id = 1;
+  bool accept = 2;
+  string download_path = 3;
+}
+
+message AcceptFileResponse {
+  string transfer_id = 1;
+  bool success = 2;
+  string error_message = 3;
+}
+
+message PauseTransferRequest {
+  string transfer_id = 1;
+}
+
+message ResumeTransferRequest {
+  string transfer_id = 1;
+}
+
+// History
+message HistoryEntry {
+  string id = 1;
+  string file_name = 2;
+  uint64 size_bytes = 3;
+  string sender_receiver = 4;
+  string timestamp = 5;
+  TransferDirection direction = 6;
+  TransferStatus status = 7;
+  string file_path = 8;
+}
+
+message GetHistoryRequest {
+  uint32 limit = 1;
+}
+
+message GetHistoryResponse {
+  repeated HistoryEntry entries = 1;
+}
+
+// Portal
+message PortalStatus {
+  bool is_running = 1;
+  string address = 2;
+  uint32 port = 3;
+}
+
+message PortalRequest {
+  bool start = 1;
+  uint32 port = 2;
+}
+
+// Hub Configuration
+message HubConfig {
+  string device_name = 1;
+  string download_directory = 2;
+  bool enable_discovery = 3;
+  bool enable_portal = 4;
+  uint32 portal_port = 5;
+  string database_url = 6;
+  string database_token = 7;
+}
+
+message InitializeRequest {
+  HubConfig config = 1;
+}
+
+message InitializeResponse {
+  bool success = 1;
+  string error_message = 2;
+  string node_id = 3;
+}
+
+// Background Transfer Lifecycle (AirDrop-Class)
+// This is the single signal Rust emits - native shells handle OS background policies
+message TransferStateChanged {
+  enum State {
+    IDLE = 0;
+    PREPARING = 1;
+    IN_PROGRESS = 2;
+    PAUSED = 3;
+    FINISHED = 4;
+    FAILED = 5;
+    CANCELLED = 6;
+  }
+  
+  State state = 1;
+  string transfer_id = 2;
+  string description = 3;  // e.g., "Sending 5GB video"
+  string file_name = 4;
+  uint64 total_bytes = 5;
+  uint64 bytes_transferred = 6;
+  double progress = 7;  // 0.0 to 1.0
+  string error_message = 8;
+  TransferDirection direction = 9;
+  
+  // Platform-specific metadata (optional)
+  // Android: Foreground service notification ID
+  // iOS: Background task identifier
+  // Desktop: Sleep inhibitor handle
+  string platform_handle = 10;
+}
+
+// Error
+message ErrorEvent {
+  string component = 1;
+  string error_code = 2;
+  string error_message = 3;
+  string timestamp = 4;
+}
+
+// Main event types for UniFFi callbacks
+message RustEvent {
+  oneof event {
+    DiscoveryEvent discovery = 1;
+    TransferProgress transfer_progress = 2;
+    TransferProgress transfer_complete = 3;
+    IncomingFileRequest incoming_request = 4;
+    PortalStatus portal_status = 5;
+    ErrorEvent error = 6;
+    TransferStateChanged transfer_state_changed = 7;  // For background transfers
+    GetHistoryResponse history_response = 8;  // ADDED: History query responses
+  }
+}
+
+message UiCommand {
+  oneof command {
+    DiscoveryRequest discovery = 1;
+    SendFileRequest send_file = 2;
+    AcceptFileRequest accept_file = 3;
+    GetHistoryRequest get_history = 4;
+    PortalRequest portal = 5;
+    PauseTransferRequest pause_transfer = 6;
+    ResumeTransferRequest resume_transfer = 7;
+  }
+}
+
+message CommandResponse {
+  bool success = 1;
+  string error_message = 2;
+  bytes data = 3;
+}
+message EventResponse {
+  bool has_data = 1;
+  string error_message = 2;
+  bytes data = 3;
+}
