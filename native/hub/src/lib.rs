@@ -27,6 +27,7 @@ mod crypto;
 mod types;
 mod hub;
 mod handoff;
+pub mod ffi;
 
 pub use types::*;
 

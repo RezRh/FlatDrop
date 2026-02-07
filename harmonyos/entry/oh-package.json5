@@ -1,0 +1,11 @@
+{
+  "name": "entry",
+  "version": "1.0.0",
+  "description": "FlatDrop HarmonyOS Entry Module",
+  "main": "",
+  "author": "FlatDrop Team",
+  "license": "MIT",
+  "dependencies": {
+    "libentry.so": "file:./src/main/cpp/types/libentry"
+  }
+}
