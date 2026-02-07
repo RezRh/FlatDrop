@@ -272,6 +272,9 @@ fn default_allowed_paths() -> Result<Vec<PathBuf>, String> {
 }
 
 pub fn hub_start(config_bytes: Vec<u8>) -> Vec<u8> {
+    if config_bytes.is_empty() {
+        return create_error_response("validation", "Config must not be empty");
+    }
     if config_bytes.len() > MAX_CONFIG_SIZE {
         return create_error_response("validation", "Config exceeds maximum allowed size");
     }
@@ -280,12 +283,14 @@ pub fn hub_start(config_bytes: Vec<u8>) -> Vec<u8> {
         return create_error_response("init_runtime", &e);
     }
 
-    let result = block_on(async {
-        let (cmd_tx, _) = ensure_controller().map_err(|e| e.to_string())?;
+    let result: Result<String, String> = match block_on(async {
+        let (cmd_tx, _controller_keepalive) =
+            ensure_controller().map_err(|e| e.to_string())?;
 
-        let allowed_paths = default_allowed_paths()?;
+        let allowed_paths = default_allowed_paths().map_err(|e| e.to_string())?;
 
         let (resp_tx, resp_rx) = oneshot::channel();
+
         cmd_tx
             .send(ControllerCmd::Start {
                 config_bytes,
@@ -293,17 +298,25 @@ pub fn hub_start(config_bytes: Vec<u8>) -> Vec<u8> {
                 resp: resp_tx,
             })
             .await
-            .map_err(|_| "Controller unavailable".to_string())?;
+            .map_err(|e| format!("Controller unavailable: {e:?}"))?;
 
-        timeout(DEFAULT_RESPONSE_TIMEOUT, resp_rx)
+        let controller_reply = tokio::time::timeout(DEFAULT_RESPONSE_TIMEOUT, resp_rx)
             .await
-            .map_err(|_| "Start request timed out".to_string())?
-            .map_err(|_| "Controller dropped response".to_string())?
-    });
+            .map_err(|_| {
+                format!(
+                    "Start request timed out after {:?} (hub may still be starting)",
+                    DEFAULT_RESPONSE_TIMEOUT
+                )
+            })?;
+
+        controller_reply.map_err(|e| format!("Controller dropped response: {e}"))?
+    }) {
+        Ok(r) => r,
+        Err(e) => Err(e),
+    };
 
     match result {
-        Ok(Ok(node_id)) => create_success_response(&node_id),
-        Ok(Err(e)) => create_error_response("hub_start", &e),
+        Ok(node_id) => create_success_response(&node_id),
         Err(e) => create_error_response("hub_start", &e),
     }
 }
