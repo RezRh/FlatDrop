@@ -1,85 +1,132 @@
-import entry from 'libentry.so';
-import { InitializeRequest, InitializeResponse } from '../proto/messages';
+import entry from "libentry.so";
+import { InitializeRequest, InitializeResponse } from "../proto/messages";
+
+type NativeEntry = {
+  hubStart(config: Uint8Array): Promise<Uint8Array>;
+  hubStop(): Promise<Uint8Array>;
+  hubIsInitialized(): boolean;
+  hubSendCommand(cmd: Uint8Array): Promise<Uint8Array>;
+  hubPollEvent(timeoutMs: number): Promise<Uint8Array>;
+  hubSubscribeEvents(cb: (ev: Uint8Array) => void, pollTimeoutMs?: number): boolean;
+  hubUnsubscribeEvents(): boolean;
+};
+
+function assertUint8Array(x: unknown, name: string): asserts x is Uint8Array {
+  if (!(x instanceof Uint8Array)) {
+    throw new TypeError(`${name} must be a Uint8Array`);
+  }
+}
+
+function encodeInitRequest(config: unknown): Uint8Array {
+  const req = InitializeRequest.create({ config });
+  const bytes = InitializeRequest.encode(req).finish();
+  if (!(bytes instanceof Uint8Array)) {
+    throw new Error("InitializeRequest.encode(...).finish() did not return Uint8Array");
+  }
+  return bytes;
+}
+
+function decodeInitResponse(bytes: Uint8Array): InitializeResponse {
+  return InitializeResponse.decode(bytes);
+}
 
 export class FlatDropCore {
-    private static isInitialized = false;
+  private static startInFlight: Promise<string> | null = null;
+  private static stopInFlight: Promise<void> | null = null;
+  private static readonly native: NativeEntry = entry as unknown as NativeEntry;
 
-    /**
-     * Start the FlatDrop Hub
-     * @param config The configuration object
-     * @returns The node ID if successful
-     */
-    public static async start(config: any): Promise<string> {
-        if (this.isInitialized) {
-            console.warn("FlatDrop Core already initialized");
-            return "";
-        }
+  public static isInitialized(): boolean {
+    return this.native.hubIsInitialized();
+  }
 
-        try {
-            console.debug("Starting FlatDrop Core...");
-            const req = new InitializeRequest();
-            req.config = config;
+  public static async start(config: unknown): Promise<string> {
+    if (this.startInFlight) return this.startInFlight;
 
-            const configBytes = InitializeRequest.encode(req);
-            // In a real implementation we would encode the config protobuf
-            // For now, let's pass an empty buffer or a simple serialized JSON if needed
-            // But the FFI expects protobuf
-
-            const resultBytes = entry.hubStart(configBytes);
-            const response = InitializeResponse.decode(resultBytes);
-
-            if (response.success) {
-                console.info(`FlatDrop Core started with Node ID: ${response.node_id}`);
-                this.isInitialized = true;
-                return response.node_id;
-            } else {
-                console.error(`Failed to start FlatDrop Core: ${response.error_message}`);
-                throw new Error(response.error_message);
-            }
-        } catch (error) {
-            console.error("Exception in FlatDropCore.start:", error);
-            throw error;
-        }
+    if (this.native.hubIsInitialized()) {
+      return "";
     }
 
-    /**
-     * Stop the FlatDrop Hub
-     */
-    public static stop(): void {
-        try {
-            entry.hubStop();
-            this.isInitialized = false;
-            console.info("FlatDrop Core stopped");
-        } catch (error) {
-            console.error("Error stopping FlatDrop Core:", error);
-        }
+    this.startInFlight = (async () => {
+      const configBytes = encodeInitRequest(config);
+      assertUint8Array(configBytes, "configBytes");
+
+      const resultBytes = await this.native.hubStart(configBytes);
+      assertUint8Array(resultBytes, "hubStart result");
+
+      const resp = decodeInitResponse(resultBytes);
+
+      if (!resp.success) {
+        throw new Error(resp.error_message || "hubStart failed");
+      }
+
+      return resp.node_id || "";
+    })()
+      .finally(() => {
+        this.startInFlight = null;
+      });
+
+    return this.startInFlight;
+  }
+
+  public static async stop(): Promise<void> {
+    if (this.stopInFlight) return this.stopInFlight;
+
+    this.stopInFlight = (async () => {
+      try {
+        await this.native.hubStop();
+      } finally {
+        this.native.hubUnsubscribeEvents();
+      }
+    })().finally(() => {
+      this.stopInFlight = null;
+    });
+
+    return this.stopInFlight;
+  }
+
+  public static async pollEvent(timeoutMs = 100): Promise<Uint8Array> {
+    if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
+      throw new RangeError("timeoutMs must be a finite number >= 0");
     }
 
-    /**
-     * Poll for events from the Rust Core
-     * @param timeoutMs Timeout in milliseconds
-     * @returns Byte array containing the serialized RustEvent
-     */
-    public static hubPollEvent(timeoutMs: number = 100): Uint8Array {
-        try {
-            return entry.hubPollEvent(timeoutMs);
-        } catch (error) {
-            console.error("Error polling event:", error);
-            return new Uint8Array(0);
-        }
+    const out = await this.native.hubPollEvent(timeoutMs);
+    assertUint8Array(out, "hubPollEvent result");
+    return out;
+  }
+
+  public static async sendCommand(commandBytes: Uint8Array): Promise<Uint8Array> {
+    assertUint8Array(commandBytes, "commandBytes");
+    if (commandBytes.length === 0) {
+      throw new RangeError("commandBytes must not be empty");
     }
 
-    /**
-     * Send a command to the Rust Core
-     * @param commandBytes Serialized command protobuf
-     * @returns Serialized response protobuf
-     */
-    public static sendCommand(commandBytes: Uint8Array): Uint8Array {
-        try {
-            return entry.hubSendCommand(commandBytes);
-        } catch (error) {
-            console.error("Error sending command:", error);
-            return new Uint8Array(0);
-        }
+    const out = await this.native.hubSendCommand(commandBytes);
+    assertUint8Array(out, "hubSendCommand result");
+    return out;
+  }
+
+  public static subscribeEvents(
+    onEvent: (evBytes: Uint8Array) => void,
+    pollTimeoutMs = 1000
+  ): void {
+    if (typeof onEvent !== "function") {
+      throw new TypeError("onEvent must be a function");
     }
+    if (!Number.isFinite(pollTimeoutMs) || pollTimeoutMs < 1) {
+      throw new RangeError("pollTimeoutMs must be a finite number >= 1");
+    }
+
+    const ok = this.native.hubSubscribeEvents((ev: Uint8Array) => {
+      if (!(ev instanceof Uint8Array)) return;
+      onEvent(ev);
+    }, pollTimeoutMs);
+
+    if (!ok) {
+      throw new Error("Failed to subscribe to events");
+    }
+  }
+
+  public static unsubscribeEvents(): void {
+    this.native.hubUnsubscribeEvents();
+  }
 }
